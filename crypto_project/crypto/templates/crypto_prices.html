@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Prices</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h2 class="text-center">Live Crypto Prices</h2>
+
+        <div class="mb-3">
+            <label for="username" class="form-label">Username:</label>
+            <input type="text" id="username" class="form-control">
+            <label for="password" class="form-label mt-2">Password:</label>
+            <input type="password" id="password" class="form-control">
+            <button onclick="loginUser()" id="loginBtn" class="btn btn-success mt-2">Login</button>
+            <button onclick="logoutUser()" id="logoutBtn" class="btn btn-danger mt-2 d-none">Logout</button>
+        </div>
+
+        <button onclick="fetchCryptoPrices(1)" class="btn btn-primary">Load Prices</button>
+
+        <div id="loading" class="text-center mt-3 d-none">
+            <span class="spinner-border text-primary"></span> Loading...
+        </div>
+
+        <table class="table table-striped mt-3">
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Price (USD)</th>
+                    <th>Timestamp</th>
+                </tr>
+            </thead>
+            <tbody id="cryptoTable">
+                <tr>
+                    <td colspan="3" class="text-center">Click "Load Prices" to fetch data.</td>
+                </tr>
+            </tbody>
+        </table>
+
+
+        <div class="d-flex justify-content-center mt-3">
+            <button id="nextPage" class="btn btn-secondary" onclick="nextPage()" disabled>Next</button>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        let nextPageUrl = null;
+
+        function updateAuthUI() {
+            const accessToken = localStorage.getItem("access_token");
+            document.getElementById("loginBtn").classList.toggle("d-none", !!accessToken);
+            document.getElementById("logoutBtn").classList.toggle("d-none", !accessToken);
+        }
+
+        async function loginUser() {
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+
+            const response = await fetch("http://127.0.0.1:8000/api/token/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            });
+
+            if (!response.ok) {
+                alert("Login failed! Check your credentials.");
+                return;
+            }
+
+            const data = await response.json();
+            localStorage.setItem("access_token", data.access);
+            localStorage.setItem("refresh_token", data.refresh);
+            alert("✅ Login successful!");
+            updateAuthUI();
+        }
+
+        async function logoutUser() {
+            localStorage.clear();
+            alert("🚪 Logged out successfully!");
+            updateAuthUI();
+        }
+
+        async function refreshToken() {
+            const refreshToken = localStorage.getItem("refresh_token");
+
+            if (!refreshToken) {
+                console.error("No refresh token found! Please log in again.");
+                return;
+            }
+
+            try {
+                const response = await fetch("http://127.0.0.1:8000/api/token/refresh/", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ refresh: refreshToken })
+                });
+
+                if (!response.ok) {
+                    console.error("Failed to refresh token. Logging out...");
+                    localStorage.clear();
+                    updateAuthUI();
+                    return;
+                }
+
+                const data = await response.json();
+                localStorage.setItem("access_token", data.access);
+                console.log("🔄 Token refreshed successfully!");
+            } catch (error) {
+                console.error("Error refreshing token:", error);
+            }
+        }
+
+        async function fetchCryptoPrices(page = 1) {
+            await refreshToken();
+
+            const accessToken = localStorage.getItem("access_token");
+            if (!accessToken) {
+                alert("❌ No access token found. Please log in again.");
+                return;
+            }
+
+            document.getElementById("loading").classList.remove("d-none"); // Show loading spinner
+
+            try {
+                const response = await fetch(`http://127.0.0.1:8000/api/crypto-prices/?page=${page}`, {
+                    method: "GET",
+                    headers: { "Authorization": "Bearer " + accessToken }
+                });
+
+                if (!response.ok) {
+                    throw new Error("Failed to fetch crypto prices. Please try again.");
+                }
+
+                const data = await response.json();
+                displayPrices(data.results);
+
+
+                nextPageUrl = data.next ? parseInt(new URL(data.next).searchParams.get("page")) : null;
+                currentPage = page;
+
+
+                document.getElementById("nextPage").disabled = nextPageUrl === null;
+
+            } catch (error) {
+                alert("Error: " + error.message);
+            } finally {
+                document.getElementById("loading").classList.add("d-none"); // Hide loading spinner
+            }
+        }
+
+        function displayPrices(prices) {
+            const tableBody = document.getElementById("cryptoTable");
+            tableBody.innerHTML = "";
+
+            prices.forEach(price => {
+                const row = `<tr>
+                    <td>${price.symbol}</td>
+                    <td>$${price.price}</td>
+                    <td>${price.timestamp}</td>
+                </tr>`;
+                tableBody.innerHTML += row;
+            });
+        }
+
+        function nextPage() {
+            if (nextPageUrl !== null && !isNaN(nextPageUrl)) {
+                fetchCryptoPrices(nextPageUrl);
+            }
+        }
+
+
+        setInterval(() => fetchCryptoPrices(currentPage), 5 * 60 * 1000);
+
+
+        setInterval(refreshToken, 50 * 60 * 1000);
+
+
+        updateAuthUI();
+        fetchCryptoPrices(1);  // ✅ Load data on page load
+    </script>
+</body>
+</html>
