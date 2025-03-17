@@ -26,7 +26,7 @@ Open the project folder in Terminal or Command Prompt**
 cd E:\crypto_application
 ```
 
-Activate Virtual Environment**
+**Activate Virtual Environment**
 ```sh
 crypto\Scripts\Activate
 ```
